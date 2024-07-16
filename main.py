@@ -1,4 +1,3 @@
-# main.py
 import asyncio
 from typing import AsyncIterable, Annotated
 from decouple import config
@@ -12,7 +11,22 @@ from mistralai.client import MistralClient
 from mistralai.models.chat_completion import ChatMessage
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
+# import libraries for vector database
+import os
+from pinecone import Pinecone, ServerlessSpec
+from sentence_transformers import SentenceTransformer
 
+# Create an instance of the Pinecone class
+pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
+
+# Create an index with a dimension of 1536 and the "euclidean" metric
+index_name = "index0"
+
+# Initialize the Pinecone client
+index = pc.Index("index0")
+
+# Initialize the SentenceTransformer model
+model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 # Create the app object
 app = FastAPI()
@@ -101,11 +115,18 @@ async def ai_response_generator(prompt: str) -> AsyncIterable[str]:
     # Output variables
     output = f"**User:** {prompt}\n\n"
     msg = ''
-    # Prompt template for message history
+    # Vectorize the prompt
+    prompt_vector = model.encode([prompt]).tolist()
+    # Query the vector database
+    results = index.query(vector=prompt_vector, top_k=5, include_metadata=True)
+    # Extract the relevant information from the query results
+    relevant_info = "\n".join([result["metadata"]["text"] for result in results["matches"]])
+    # Incorporate the relevant information into the prompt template
     prompt_template = "Previous messages:\n"
     for message_history in app.message_history:
         prompt_template += message_history.message + "\n"
-    prompt_template += f"Human: {prompt}"
+    prompt_template += f"Relevant information:\n{relevant_info}\nHuman: {prompt}"
+
     # Mistral chat messages
     mistral_messages = [
         ChatMessage(role="system", content=system_message),
