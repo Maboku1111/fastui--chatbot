@@ -1,7 +1,7 @@
 import asyncio
 from typing import AsyncIterable, Annotated
 from decouple import config
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 from fastui import prebuilt_html, FastUI, AnyComponent
 from fastui import components as c
@@ -30,6 +30,14 @@ model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 # Create the app object
 app = FastAPI()
+
+# Implement websockets
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"Message text was: {data}")
 
 # Message history
 app.message_history = []
