@@ -18,6 +18,9 @@ from sentence_transformers import SentenceTransformer
 # import libraries for database
 from cohere import Client
 from rich.table import Table
+from sqlalchemy import create_engine, Column, String, Integer
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 # Initialize Cohere client with your API key
 cohere_client = Client(api_key=config('COHERE_API_KEY'))
@@ -34,6 +37,25 @@ index = pc.Index("index0")
 # Initialize the SentenceTransformer model
 model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
+# Create a database engine
+engine = create_engine('sqlite:///chat_history.db')
+
+# Define a base class for declarative class definitions
+Base = declarative_base()
+
+# Define a class to represent the chat history table
+class ChatHistory(Base):
+    __tablename__ = 'chat_history'
+    id = Column(Integer, primary_key=True)
+    message = Column(String)
+    response = Column(String)
+
+# Create the table
+Base.metadata.create_all(engine)
+
+# Create a session maker
+Session = sessionmaker(bind=engine)
+
 # Create a table to display data
 table = Table(title="Chat History")
 
@@ -41,9 +63,29 @@ table = Table(title="Chat History")
 table.add_column("Message", style="cyan", no_wrap=True)
 table.add_column("Response", style="magenta", no_wrap=True)
 
-# Append messages to the table
+# Function to append messages to the table
 def append_to_table(message: str, response: str):
+    # Add row to the table
     table.add_row(message, response)
+    # Add row to the database
+    session = Session()
+    chat_history = ChatHistory(message=message, response=response)
+    session.add(chat_history)
+    session.commit()
+    session.close()
+
+# Function to display the table
+def display_table():
+    console = Console()
+    console.print(table)
+
+# Function to retrieve chat history from the database and populate the table
+def populate_table():
+    session = Session()
+    chat_history = session.query(ChatHistory).all()
+    for entry in chat_history:
+        table.add_row(entry.message, entry.response)
+    session.close()
 
 # Create the app object
 app = FastAPI()
