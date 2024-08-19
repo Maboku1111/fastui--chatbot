@@ -15,6 +15,12 @@ from starlette.responses import StreamingResponse
 import os
 from pinecone import Pinecone, ServerlessSpec
 from sentence_transformers import SentenceTransformer
+# import libraries for database
+from cohere import Client
+from rich.table import Table
+
+# Initialize Cohere client with your API key
+cohere_client = Client(api_key=config('COHERE_API_KEY'))
 
 # Create an instance of the Pinecone class
 pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
@@ -27,6 +33,17 @@ index = pc.Index("index0")
 
 # Initialize the SentenceTransformer model
 model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+
+# Create a table to display data
+table = Table(title="Chat History")
+
+# Add columns to the table
+table.add_column("Message", style="cyan", no_wrap=True)
+table.add_column("Response", style="magenta", no_wrap=True)
+
+# Append messages to the table
+def append_to_table(message: str, response: str):
+    table.add_row(message, response)
 
 # Create the app object
 app = FastAPI()
@@ -115,6 +132,8 @@ async def empty_response() -> AsyncIterable[str]:
         yield msg
         await asyncio.sleep(10)
 
+
+
 # MistralAI response generator
 async def ai_response_generator(prompt: str) -> AsyncIterable[str]:
     # Mistral client
@@ -157,6 +176,37 @@ async def ai_response_generator(prompt: str) -> AsyncIterable[str]:
     while True:
         yield msg
         await asyncio.sleep(10)
+
+# Cohere response generator
+async def cohere_response_generator(prompt: str) -> AsyncIterable[str]:
+    # Use Cohere to generate a response
+    response = cohere_client.generate(
+        model='large',
+        prompt=prompt,
+        max_tokens=50,
+        temperature=0.5
+    )
+    output = f"**User:** {prompt}\n\n**Chatbot (Cohere):** {response.generations[0].text}"
+    # Send the message
+    m = FastUI(root=[c.Markdown(text=output)])
+    msg = f'data: {m.model_dump_json(by_alias=True, exclude_none=True)}\n\n'
+    yield msg
+    # Append the message to the history
+    message = MessageHistoryModel(message=output)
+    app.message_history.append(message)
+    # Avoid the browser reconnecting
+    while True:
+        yield msg
+        await asyncio.sleep(10)
+
+# SSE endpoint
+@app.get('/api/sse/{prompt}')
+async def sse_ai_response(prompt: str) -> StreamingResponse:
+    # Check if prompt is empty
+    if prompt is None or prompt == '' or prompt == 'None':
+        return StreamingResponse(empty_response(), media_type='text/event-stream')
+    # Use Cohere response generator
+    return StreamingResponse(cohere_response_generator(prompt), media_type='text/event-stream')
 
 # Pre-built HTML
 @app.get('/{path:path}')
