@@ -241,6 +241,7 @@ async def cohere_response_generator(prompt: str) -> AsyncIterable[str]:
         yield msg
         await asyncio.sleep(10)
 
+'''
 # SSE endpoint
 @app.get('/api/sse/{prompt}')
 async def sse_ai_response(prompt: str) -> StreamingResponse:
@@ -249,6 +250,7 @@ async def sse_ai_response(prompt: str) -> StreamingResponse:
         return StreamingResponse(empty_response(), media_type='text/event-stream')
     # Use Cohere response generator
     return StreamingResponse(cohere_response_generator(prompt), media_type='text/event-stream')
+'''
 
 # Pre-built HTML
 @app.get('/{path:path}')
